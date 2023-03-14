@@ -1,0 +1,133 @@
+---
+title: "Untitled"
+author: "KANHONOU LIONEL"
+date: "2023-02-15"
+output: html_document
+---
+
+##Statistique R
+
+```{r}
+require(readxl)
+require(dplyr)
+require(tidyverse)
+require(plotly)
+```
+**commentaires**
+##Les données
+```{r}
+M15<-read_excel("insee_rp_hist_1968M15.xlsx",  skip =4)
+P1529<-read_excel("insee_rp_hist_1968_1529.xlsx", skip =4)
+P3044<-read_excel("insee_rp_hist_1968_3044.xlsx", skip =4)
+P4559<-read_excel("insee_rp_hist_1968_4559.xlsx", skip =4)
+P6074<-read_excel("insee_rp_hist_1968_6074.xlsx", skip =4)
+P75plus<-read_excel("insee_rp_hist_1968_P75.xlsx",  skip =4)
+P65plus<-read_excel("insee_rp_hist_1968_65P.xlsx",  skip =4)
+
+
+indice<-read_excel("insee_rp_hist_1968_indice.xlsx", skip = 4)
+
+df_list<-list(M15,P1529,P3044,P4559,P6074,P65plus,P75plus)
+
+#merge 
+population_nbr<-df_list %>% reduce(full_join, by=c("codgeo","libgeo","an"))
+
+population_nbr<-population_nbr%>%group_by(codgeo,libgeo,an)%>%
+  mutate(P6064=pop6074-(pop65p-pop75p))
+
+#Creation d'une base de données que sur le nombre de 
+#de la population par tranche d'âge
+writexl::write_xlsx(population_nbr,"population_nbr.xlsx")
+
+
+#
+population_nbr<-read_excel("population_nbr.xlsx")
+head(population_nbr)
+```
+
+**commentaires**
+##Les données manquantes
+
+Ne pas oublier qu'on travaille avec les données de la France hors mayotte. 
+```{r}
+#J'ai vérifié les données manquantes
+population_nbr%>%filter(libgeo=="Guadeloupe",is.na(pop1529))
+population_nbr%>%filter(libgeo=="Bretagne",!is.na(pop1529))
+population_nbr%>%filter(libgeo=="Mayotte",is.na(pop1529))
+```
+**commentaires**
+Pour les années 1968,1975,1982, nous ne disposons pas de données pour les territoires du DOM-TOM (Gouadeloupe, Guyanne et autres)
+Toutes les données ne sont disponibles qu'à partir de 1990
+
+**commentaires**
+##En France  
+```{r}
+#Nombre de la population en france par tranche d'âge et par année
+nombre_f<-population_nbr%>%group_by(an)%>%filter(an>=1990)%>%
+  summarize_if(is.numeric,sum,na.rm=T)
+
+#La population totale par année 
+population_total_france<-population_nbr%>%group_by(an)%>%filter(an>=1990)%>%summarise(population_total=sum(pop0014,pop1529,pop3044,pop4559,P6064,pop65p, na.rm = T))
+
+#La part de la population par tranche d'âge et par année
+part_france<-apply(nombre_f[,c(2:ncol(nombre_f))], 2, function(x){round(x*100/population_total_france$population_total,2)})
+part_france<-as.data.frame(part_france)
+part_france<-cbind(an=population_total_france$an,part_france)
+```
+
+**commentaires**
+Un site qui peut aider à interpréter
+https://www.observationsociete.fr/ages/un-vieillissement-de-la-population-souvent-exagere-2/#:~:text=Ce%20vieillissement%20r%C3%A9sulte%20de%20deux,moins%20%C3%A2g%C3%A9s%20que%20la%20moyenne).
+
+##Représentation graphique de la structure de la population par tranche d'âge en pourcentage.(à interpréter)
+```{r}
+tx_evolution_pic<-plot_ly(data = part_france, y=~pop65p,x=~an,  name = '65 ans ou plus', type='scatter', mode='lines')
+
+tx_evolution_pic<- tx_evolution_pic %>% add_trace(y=~pop0014, name = 'moins de 15ans')
+
+tx_evolution_pic<- tx_evolution_pic %>% add_trace(y=~pop1529, name = '15 ans à 29 ans')
+
+tx_evolution_pic<- tx_evolution_pic %>% add_trace(y=~pop3044, name = '30 ans à 44 ans')
+
+tx_evolution_pic<- tx_evolution_pic %>% add_trace(y=~pop4559, name = '45 ans à 59 ans ')
+
+tx_evolution_pic<- tx_evolution_pic %>%
+  add_trace(y=~pop75p, name = 'dont 75 ans ou plus')%>%
+  layout(title="Evolution de la structure de la population par tranche d'âge de 1990 à 2019, en % en France", xaxis = list(title = 'année de recensement'), yaxis = list(title = 'taux en pourcentage')) 
+
+tx_evolution_pic
+```
+
+**commentaires**
+#L'evolution de l'indice de vieillessement en France
+
+```{r}
+summary(indice)
+head(indice)
+
+#Calcul de l'indice de vieillissement en France
+ev_indice_F<-indice%>%group_by(an)%>%summarise(indice_france=mean(ind_vieillist, na.rm=T))
+```
+
+**commentaires**
+#l'evolution de l'indice de vieillisement en France
+
+#ce qui conforte un peu le resulat trouyvé dans les graphiques précedentes.
+
+Le lien d'en haut nous aidera et celui de l'insee ci-dessous.
+
+https://www.insee.fr/fr/statistiques/5020060?sommaire=5040030#figure5_radio1
+```{r, echo=FALSE}
+#Graphique
+
+indice_pic<-plot_ly(data = ev_indice_F, y=~indice_france,x=~an, type='scatter', mode='lines + marker')%>%layout(title="Evolution de l'indice de vieillissment de 1968 à 2019 en France", xaxis = list(title = 'année de recensement'), yaxis = list(title = 'indice')) 
+
+#htmlwidgets::saveWidget(widget =tx_evolution_pic, file = "tx_evolution_pic.html")
+#webshot(url = "tx_evolution_pic.html", file = "tx_evolution_pic.png", delay = 1, zoom = 4, vheight = 500)
+
+indice_pic
+```
+
+
+
+
